@@ -16,6 +16,7 @@
   <cast-media-player></cast-media-player>
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager(); // ✅ هذا هو التصحيح
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
@@ -29,8 +30,16 @@
         let supportsDTS = false;
 
         try {
-          if (context.canDisplayType('video/mp4', 3840, 2160, 60)) maxRes = '4K';
-          else if (!context.canDisplayType('video/mp4', 1920, 1080, 60)) maxRes = '720p';
+          let is4K = false;
+          let is1080p = true;
+          
+          if (playerManager && typeof playerManager.canDisplayType === 'function') {
+             is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
+             is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
+          }
+          
+          if (is4K) maxRes = '4K';
+          else if (!is1080p) maxRes = '720p';
 
           if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
             supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
@@ -38,7 +47,9 @@
             supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
             supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
           }
-        } catch(e) {}
+        } catch(e) {
+           console.log("Error checking capabilities: " + e.message);
+        }
 
         customEvent.sender.send({
           type: 'RESOLUTION_RESPONSE',
