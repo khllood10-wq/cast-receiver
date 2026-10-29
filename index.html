@@ -1,24 +1,78 @@
-function detectMaxResolution() {
-  // نفحص 4K بصيغة H.265 (HEVC) أولاً، لأنها الأكثر شيوعاً لتلفزيونات 4K
-  if (canPlayVideo('hvc1.1.6.L153.B0', 3840, 2160, 60) ||
-      canPlayVideo('hvc1.1.6.L150.B0', 3840, 2160, 30) ||
-      canPlayVideo('hev1.1.6.L153.B0', 3840, 2160, 60)) {
-    return '4K';
-  }
-  
-  // نفحص 4K بصيغة H.264 (AVC)
-  if (canPlayVideo('avc1.640028', 3840, 2160, 30) ||
-      canPlayVideo('avc1.64002A', 3840, 2160, 60) ||
-      canPlayVideo('avc1.640033', 3840, 2160, 24)) {
-    return '4K';
-  }
-  
-  // نفحص 1080p بصيغة H.264
-  if (canPlayVideo('avc1.640028', 1920, 1080, 60) ||
-      canPlayVideo('avc1.4D401F', 1920, 1080, 30)) {
-    return '1080p';
-  }
-  
-  // إذا فشل كل ما سبق، نرجع 720p كخيار آمن
-  return '720p';
-}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Xtreme IPTV V2</title>
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <style>
+    cast-media-player {
+      --bottom-controls-visibility: hidden;
+      --progress-bar-color: transparent;
+      --splash-image: none;
+    }
+  </style>
+</head>
+<body>
+  <cast-media-player></cast-media-player>
+  <script>
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+      let message;
+      try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
+
+      if (message.type === 'CHECK_RESOLUTION') {
+        let responseSent = false;
+        const sendResponse = (maxRes, aac, ac3, eac3, dts) => {
+          if (responseSent) return;
+          responseSent = true;
+          try {
+            const response = JSON.stringify({
+              type: 'RESOLUTION_RESPONSE',
+              maxResolution: maxRes,
+              supportsAAC: aac,
+              supportsAC3: ac3,
+              supportsEAC3: eac3,
+              supportsDTS: dts
+            });
+            context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
+          } catch (e) {}
+        };
+
+        const safetyTimeout = setTimeout(() => {
+          sendResponse('1080p', true, false, false, false);
+        }, 2000);
+
+        try {
+          // ✅ الحل الجذري: نقرأ دقة الشاشة الحقيقية (التلفزيون)
+          const screenWidth = window.screen.width;
+          const screenHeight = window.screen.height;
+          
+          let maxRes = '720p';
+          
+          // إذا كانت الشاشة تدعم 4K (3840 بكسل)
+          if (screenWidth >= 3840) {
+            maxRes = '4K';
+          } 
+          // إذا كانت الشاشة تدعم 1080p (1920 بكسل)
+          else if (screenWidth >= 1920) {
+            maxRes = '1080p';
+          }
+          
+          console.log("TV Real Screen Resolution:", screenWidth, "x", screenHeight, "=> Selected:", maxRes);
+          
+          clearTimeout(safetyTimeout);
+          sendResponse(maxRes, true, false, false, false);
+        } catch (e) {
+          clearTimeout(safetyTimeout);
+          sendResponse('1080p', true, false, false, false);
+        }
+      }
+    });
+
+    context.start();
+  </script>
+</body>
+</html>
