@@ -10,36 +10,41 @@
       --progress-bar-color: transparent;
       --splash-image: "";
     }
-    /* صندوق الاختبار الأحمر */
     #debug-box {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background-color: red; display: none; z-index: 999999;
-      justify-content: center; align-items: center; color: white; font-size: 60px; font-family: sans-serif; text-align: center;
+      flex-direction: column; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center;
     }
+    .title { font-size: 60px; margin-bottom: 20px; }
+    .status { font-size: 40px; background: black; padding: 20px; border-radius: 10px; }
   </style>
 </head>
 <body>
   <cast-media-player></cast-media-player>
-  <div id="debug-box">MESSAGE RECEIVED!</div>
+  <div id="debug-box">
+    <div class="title">MESSAGE RECEIVED!</div>
+    <div id="send-status" class="status">Sending Reply...</div>
+  </div>
+  
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
     
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      // إظهار الصندوق الأحمر
       document.getElementById('debug-box').style.display = 'flex';
-      console.log("Message received: ", customEvent.data);
       
       try {
         customEvent.sender.send(JSON.stringify({
           type: 'RESOLUTION_RESPONSE',
           maxResolution: 'TEST_4K',
-          supportsAAC: true,
-          supportsAC3: true,
-          supportsEAC3: true,
-          supportsDTS: true
+          supportsAAC: true
         }));
-      } catch(e) {}
+        document.getElementById('send-status').innerText = "✅ REPLY SENT SUCCESSFULLY!";
+        document.getElementById('send-status').style.color = "lightgreen";
+      } catch(e) {
+        document.getElementById('send-status').innerText = "❌ FAILED TO SEND: " + e.message;
+        document.getElementById('send-status').style.color = "yellow";
+      }
     });
 
     context.start();
