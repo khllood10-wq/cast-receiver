@@ -5,9 +5,8 @@
   <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
+    /* لا نطبق إخفاء الشريط الآن - سنطبقه ديناميكياً بعد بدء التشغيل */
     cast-media-player {
-      --bottom-controls-visibility: hidden;
-      --progress-bar-color: transparent;
       --splash-image: none;
     }
   </style>
@@ -18,61 +17,136 @@
     const context = cast.framework.CastReceiverContext.getInstance();
     const playerManager = context.getPlayerManager();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+    let lastSenderId = null;
 
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      let message;
-      try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
-
-      if (message.type === 'CHECK_RESOLUTION') {
-        let responseSent = false;
-        const sendResponse = (maxRes, aac, ac3, eac3, dts) => {
-          if (responseSent) return;
-          responseSent = true;
-          try {
-            const response = JSON.stringify({
-              type: 'RESOLUTION_RESPONSE',
-              maxResolution: maxRes,
-              supportsAAC: aac,
-              supportsAC3: ac3,
-              supportsEAC3: eac3,
-              supportsDTS: dts
-            });
-            context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
-          } catch (e) {}
-        };
-
-        const safetyTimeout = setTimeout(() => {
-          sendResponse('1080p', true, false, false, false);
-        }, 2000);
-
-        try {
-          // ✅ الحل الجذري: نقرأ دقة الشاشة الحقيقية (التلفزيون)
-          const screenWidth = window.screen.width;
-          const screenHeight = window.screen.height;
-          
-          let maxRes = '720p';
-          
-          // إذا كانت الشاشة تدعم 4K (3840 بكسل)
-          if (screenWidth >= 3840) {
-            maxRes = '4K';
-          } 
-          // إذا كانت الشاشة تدعم 1080p (1920 بكسل)
-          else if (screenWidth >= 1920) {
-            maxRes = '1080p';
+    // ============================================================
+    // 1. إخفاء الشريط السفلي بأمان (بعد PLAYING + 2 ثانية)
+    // ============================================================
+    function applyHideControls() {
+      if (document.getElementById('_xtreme_hide_controls')) return;
+      try {
+        const style = document.createElement('style');
+        style.id = '_xtreme_hide_controls';
+        style.textContent = `
+          cast-media-player {
+            --bottom-controls-visibility: hidden !important;
+            --progress-bar-color: transparent !important;
+            --tooltip-background-color: transparent !important;
           }
-          
-          console.log("TV Real Screen Resolution:", screenWidth, "x", screenHeight, "=> Selected:", maxRes);
-          
-          clearTimeout(safetyTimeout);
-          sendResponse(maxRes, true, false, false, false);
-        } catch (e) {
-          clearTimeout(safetyTimeout);
-          sendResponse('1080p', true, false, false, false);
-        }
+        `;
+        document.head.appendChild(style);
+        console.log("✅ تم إخفاء الشريط السفلي بأمان");
+      } catch(e) { console.log("Failed to hide controls:", e); }
+    }
+
+    function removeHideControls() {
+      const el = document.getElementById('_xtreme_hide_controls');
+      if (el) el.remove();
+    }
+
+    // حذف CSS عند بدء تحميل فيديو جديد (ليظهر الشريط أثناء التحميل)
+    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_LOAD_START, () => {
+      removeHideControls();
+    });
+
+    // تطبيق CSS بعد بدء التشغيل الفعلي + انتظار إضافي 2 ثانية
+    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_STATE_CHANGED, (event) => {
+      if (event.newState === cast.framework.media_player.MediaState.PLAYING) {
+        setTimeout(applyHideControls, 2000);
       }
     });
 
-    context.start();
+    // ============================================================
+    // 2. اكتشاف الدقة (شاشة + كوديك معاً)
+    // ============================================================
+    function canPlayCodec(codec) {
+      try {
+        if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+          return MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`);
+        }
+      } catch(e) {}
+      return false;
+    }
+
+    function detectResolution() {
+      let screenW = 0;
+      try { screenW = window.screen.width || 0; } catch(e) {}
+      
+      const canDo4K = canPlayCodec('hvc1.1.6.L153.B0') ||
+                      canPlayCodec('hvc1.1.6.L150.B0') ||
+                      canPlayCodec('avc1.640028');
+      
+      // 4K فقط إذا كانت الشاشة 4K والكوديك مدعوم
+      if (screenW >= 3840 && canDo4K) return '4K';
+      
+      const canDo1080p = canPlayCodec('avc1.640028') || canPlayCodec('avc1.4D401F');
+      if (canDo1080p) return '1080p';
+      
+      return '720p';
+    }
+
+    // ============================================================
+    // 3. استقبال الرسائل من الهاتف (مع حماية كاملة)
+    // ============================================================
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+      try {
+        let message = customEvent.data;
+        if (typeof message === 'string') {
+          try { message = JSON.parse(message); } catch(e) {}
+        }
+        
+        lastSenderId = customEvent.senderId;
+        
+        if (message && message.type === 'CHECK_RESOLUTION') {
+          let maxRes = '1080p';
+          try { maxRes = detectResolution(); } catch(e) {}
+          
+          console.log("📡 Sending resolution:", maxRes);
+          
+          try {
+            context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, JSON.stringify({
+              type: 'RESOLUTION_RESPONSE',
+              maxResolution: maxRes,
+              supportsAAC: true,
+              supportsAC3: false,
+              supportsEAC3: false,
+              supportsDTS: false
+            }));
+          } catch(e) { console.log("Send failed:", e); }
+        }
+      } catch(e) { console.log("Message handler error:", e); }
+    });
+
+    // ============================================================
+    // 4. الإبلاغ عن أخطاء التشغيل (للترميز غير المعروف)
+    // ============================================================
+    playerManager.addEventListener(cast.framework.events.EventType.ERROR, (event) => {
+      console.log("🎬 Playback error detected:", event);
+      if (!lastSenderId) return;
+      
+      let errorCode = 'UNKNOWN';
+      try {
+        if (event.detailedErrorCode) errorCode = String(event.detailedErrorCode);
+      } catch(e) {}
+      
+      try {
+        context.sendCustomMessage(CUSTOM_NAMESPACE, lastSenderId, JSON.stringify({
+          type: 'PLAYBACK_ERROR',
+          errorCode: errorCode
+        }));
+      } catch(e) {}
+    });
+
+    // ============================================================
+    // 5. بدء التشغيل (مع إعدادات Android TV)
+    // ============================================================
+    try {
+      context.start({
+        uiConfig: { touchScreenOptimizedApp: false }
+      });
+    } catch(e) {
+      context.start();
+    }
   </script>
 </body>
 </html>
