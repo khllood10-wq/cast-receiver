@@ -16,17 +16,15 @@
     (function () {
       try {
         var context = cast.framework.CastReceiverContext.getInstance();
-        var NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+        var NS = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-        context.addCustomMessageListener(NAMESPACE, function (event) {
+        context.addCustomMessageListener(NS, function (event) {
           try {
             var data = event.data;
-            if (typeof data === 'string') {
-              try { data = JSON.parse(data); } catch (e) {}
-            }
+            if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) {} }
             if (!data || data.type !== 'CHECK_RESOLUTION') return;
 
-            // نرجع دائماً 1080p لأن هذا هو الأكثر أماناً لجميع التلفزيونات
+            // إرسال 1080p دائماً (لأن التلفاز 1080p، ولحماية الكاست)
             var response = JSON.stringify({
               type: 'RESOLUTION_RESPONSE',
               maxResolution: '1080p',
@@ -35,20 +33,13 @@
               supportsEAC3: false,
               supportsDTS: false
             });
-
-            try {
-              context.sendCustomMessage(NAMESPACE, event.senderId, response);
-            } catch (e) {}
-          } catch (e) {}
+            context.sendCustomMessage(NS, event.senderId, response);
+          } catch(e) {}
         });
 
-        // أبسط استدعاء ممكن - لا خيارات، لا uiConfig، لا معاملات
         context.start();
-      } catch (e) {
-        // في حالة فشل الأول، نحاول مرة أخرى بلا حماية
-        try {
-          cast.framework.CastReceiverContext.getInstance().start();
-        } catch (e2) {}
+      } catch(e) {
+        try { cast.framework.CastReceiverContext.getInstance().start(); } catch(e2) {}
       }
     })();
   </script>
