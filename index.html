@@ -13,35 +13,48 @@
 <body>
   <cast-media-player></cast-media-player>
   <script>
-    (function () {
-      try {
-        var context = cast.framework.CastReceiverContext.getInstance();
-        var NS = 'urn:x-cast:com.xtreme.iptv.resolution';
+    const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
+    const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-        context.addCustomMessageListener(NS, function (event) {
-          try {
-            var data = event.data;
-            if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) {} }
-            if (!data || data.type !== 'CHECK_RESOLUTION') return;
+    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+      let message;
+      try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
 
-            // إرسال 1080p دائماً (لأن التلفاز 1080p، ولحماية الكاست)
-            var response = JSON.stringify({
-              type: 'RESOLUTION_RESPONSE',
-              maxResolution: '1080p',
-              supportsAAC: true,
-              supportsAC3: false,
-              supportsEAC3: false,
-              supportsDTS: false
-            });
-            context.sendCustomMessage(NS, event.senderId, response);
-          } catch(e) {}
-        });
+      if (message.type === 'CHECK_RESOLUTION') {
+        let maxRes = '1080p';
+        let supportsAAC = true;
+        let supportsAC3 = false;
+        let supportsEAC3 = false;
+        let supportsDTS = false;
 
-        context.start();
-      } catch(e) {
-        try { cast.framework.CastReceiverContext.getInstance().start(); } catch(e2) {}
+        try {
+          const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
+          if (is4K) maxRes = '4K';
+          
+          if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+            supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+            supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
+            supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
+            supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
+          }
+        } catch (e) {}
+
+        try {
+          const response = JSON.stringify({
+            type: 'RESOLUTION_RESPONSE',
+            maxResolution: maxRes,
+            supportsAAC: supportsAAC,
+            supportsAC3: supportsAC3,
+            supportsEAC3: supportsEAC3,
+            supportsDTS: supportsDTS
+          });
+          context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
+        } catch (e) {}
       }
-    })();
+    });
+
+    context.start();
   </script>
 </body>
 </html>
