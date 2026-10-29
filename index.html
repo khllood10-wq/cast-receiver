@@ -6,69 +6,49 @@
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
     cast-media-player {
-      --bottom-controls-visibility: hidden !important;
-      --progress-bar-color: transparent !important;
-      --splash-image: none;
+      --bottom-controls-visibility: hidden;
     }
   </style>
 </head>
 <body>
   <cast-media-player></cast-media-player>
   <script>
-    (function() {
+    (function () {
       try {
         var context = cast.framework.CastReceiverContext.getInstance();
-        var NS = 'urn:x-cast:com.xtreme.iptv.resolution';
+        var NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-        context.addCustomMessageListener(NS, function(event) {
+        context.addCustomMessageListener(NAMESPACE, function (event) {
           try {
-            var msg = event.data;
-            if (typeof msg === 'string') {
-              try { msg = JSON.parse(msg); } catch(e) {}
+            var data = event.data;
+            if (typeof data === 'string') {
+              try { data = JSON.parse(data); } catch (e) {}
             }
-            if (!msg || msg.type !== 'CHECK_RESOLUTION') return;
+            if (!data || data.type !== 'CHECK_RESOLUTION') return;
 
-            // اكتشاف الدقة
-            var maxRes = '1080p';
+            // نرجع دائماً 1080p لأن هذا هو الأكثر أماناً لجميع التلفزيونات
+            var response = JSON.stringify({
+              type: 'RESOLUTION_RESPONSE',
+              maxResolution: '1080p',
+              supportsAAC: true,
+              supportsAC3: false,
+              supportsEAC3: false,
+              supportsDTS: false
+            });
+
             try {
-              var screenW = 0;
-              try { screenW = window.screen.width || 0; } catch(e) {}
-
-              function canPlay(codec) {
-                try {
-                  return MediaSource && MediaSource.isTypeSupported &&
-                    MediaSource.isTypeSupported('video/mp4; codecs="' + codec + '"');
-                } catch(e) { return false; }
-              }
-
-              var can4K = canPlay('hvc1.1.6.L153.B0') || canPlay('avc1.640028');
-              if (screenW >= 3840 && can4K) {
-                maxRes = '4K';
-              } else if (canPlay('avc1.640028') || canPlay('avc1.4D401F')) {
-                maxRes = '1080p';
-              } else {
-                maxRes = '720p';
-              }
-            } catch(e) {}
-
-            // إرسال الرد
-            try {
-              context.sendCustomMessage(NS, event.senderId, JSON.stringify({
-                type: 'RESOLUTION_RESPONSE',
-                maxResolution: maxRes,
-                supportsAAC: true,
-                supportsAC3: false,
-                supportsEAC3: false,
-                supportsDTS: false
-              }));
-            } catch(e) {}
-          } catch(e) {}
+              context.sendCustomMessage(NAMESPACE, event.senderId, response);
+            } catch (e) {}
+          } catch (e) {}
         });
 
-        // بدء التشغيل (بدون أي خيارات إضافية قد لا تكون مدعومة)
+        // أبسط استدعاء ممكن - لا خيارات، لا uiConfig، لا معاملات
         context.start();
-      } catch(e) {
-        try { cast.framework.CastReceiverContext.getInstance().start(); } catch(e2) {}
+      } catch (e) {
+        // في حالة فشل الأول، نحاول مرة أخرى بلا حماية
+        try {
+          cast.framework.CastReceiverContext.getInstance().start();
+        } catch (e2) {}
       }
     })();
   </script>
