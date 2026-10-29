@@ -10,6 +10,7 @@
       --progress-bar-color: transparent;
       --splash-image: "";
     }
+    /* صندوق الاختبار */
     #debug-box {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background-color: red; display: none; z-index: 999999;
@@ -31,14 +32,19 @@
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
     
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+      // إظهار صندوق الاختبار الأحمر
       document.getElementById('debug-box').style.display = 'flex';
       
       try {
-        customEvent.sender.send(JSON.stringify({
+        const response = JSON.stringify({
           type: 'RESOLUTION_RESPONSE',
           maxResolution: 'TEST_4K',
           supportsAAC: true
-        }));
+        });
+        
+        // ✅ الإصلاح هنا: استخدام sendCustomMessage بدلاً من sender.send
+        context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
+        
         document.getElementById('send-status').innerText = "✅ REPLY SENT SUCCESSFULLY!";
         document.getElementById('send-status').style.color = "lightgreen";
       } catch(e) {
