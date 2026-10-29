@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Xtreme IPTV Receiver V2</title>
+  <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
     cast-media-player {
@@ -10,46 +10,58 @@
       --progress-bar-color: transparent;
       --splash-image: "";
     }
-    /* صندوق الاختبار */
-    #debug-box {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background-color: red; display: none; z-index: 999999;
-      flex-direction: column; justify-content: center; align-items: center; color: white; font-family: sans-serif; text-align: center;
-    }
-    .title { font-size: 60px; margin-bottom: 20px; }
-    .status { font-size: 40px; background: black; padding: 20px; border-radius: 10px; }
   </style>
 </head>
 <body>
   <cast-media-player></cast-media-player>
-  <div id="debug-box">
-    <div class="title">MESSAGE RECEIVED!</div>
-    <div id="send-status" class="status">Sending Reply...</div>
-  </div>
-  
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
+    const playerManager = context.getPlayerManager();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
-    
+
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      // إظهار صندوق الاختبار الأحمر
-      document.getElementById('debug-box').style.display = 'flex';
-      
-      try {
-        const response = JSON.stringify({
-          type: 'RESOLUTION_RESPONSE',
-          maxResolution: 'TEST_4K',
-          supportsAAC: true
-        });
-        
-        // ✅ الإصلاح هنا: استخدام sendCustomMessage بدلاً من sender.send
-        context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
-        
-        document.getElementById('send-status').innerText = "✅ REPLY SENT SUCCESSFULLY!";
-        document.getElementById('send-status').style.color = "lightgreen";
-      } catch(e) {
-        document.getElementById('send-status').innerText = "❌ FAILED TO SEND: " + e.message;
-        document.getElementById('send-status').style.color = "yellow";
+      let message;
+      try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
+
+      if (message.type === 'CHECK_RESOLUTION') {
+        let maxRes = '1080p';
+        let supportsAAC = true;
+        let supportsAC3 = false;
+        let supportsEAC3 = false;
+        let supportsDTS = false;
+
+        // حماية التلفاز من الانهيار أثناء الفحص
+        try {
+          const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
+          const is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
+
+          if (is4K) maxRes = '4K';
+          else if (!is1080p) maxRes = '720p';
+
+          if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+            supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+            supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
+            supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
+            supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
+          }
+        } catch (e) {
+          console.log("Capability check failed, using defaults.");
+        }
+
+        // إرسال الرد الآمن
+        try {
+          const response = JSON.stringify({
+            type: 'RESOLUTION_RESPONSE',
+            maxResolution: maxRes,
+            supportsAAC: supportsAAC,
+            supportsAC3: supportsAC3,
+            supportsEAC3: supportsEAC3,
+            supportsDTS: supportsDTS
+          });
+          context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
+        } catch (e) {
+          console.log("Failed to send response");
+        }
       }
     });
 
