@@ -2,10 +2,9 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Xtreme IPTV Receiver</title>
+  <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
-    /* إخفاء الشريط السفلي وأزرار التحكم تماماً */
     cast-media-player {
       --bottom-controls-visibility: hidden;
       --progress-bar-color: transparent;
@@ -19,34 +18,27 @@
     const context = cast.framework.CastReceiverContext.getInstance();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-    function isAudioSupported(codec) {
-      try {
-        if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-          return MediaSource.isTypeSupported(`audio/mp4; codecs="${codec}"`) ||
-                 MediaSource.isTypeSupported(`audio/webm; codecs="${codec}"`) ||
-                 MediaSource.isTypeSupported(`audio/mp2t; codecs="${codec}"`);
-        }
-      } catch (e) {}
-      try {
-        return context.canDisplayType(`audio/mp4; codecs="${codec}"`, -1, -1, -1);
-      } catch (e) {}
-      return false;
-    }
-
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
       const message = customEvent.data;
       if (message.type === 'CHECK_RESOLUTION') {
-        const is4K = context.canDisplayType('video/mp4', 3840, 2160, 60);
-        const is1080p = context.canDisplayType('video/mp4', 1920, 1080, 60);
+        
+        let maxRes = '1080p';
+        let supportsAAC = true;
+        let supportsAC3 = false;
+        let supportsEAC3 = false;
+        let supportsDTS = false;
 
-        let maxRes = '720p';
-        if (is4K) maxRes = '4K';
-        else if (is1080p) maxRes = '1080p';
+        try {
+          if (context.canDisplayType('video/mp4', 3840, 2160, 60)) maxRes = '4K';
+          else if (!context.canDisplayType('video/mp4', 1920, 1080, 60)) maxRes = '720p';
 
-        const supportsAAC = isAudioSupported('mp4a.40.2') || isAudioSupported('mp4a.40.5');
-        const supportsAC3 = isAudioSupported('ac-3');
-        const supportsEAC3 = isAudioSupported('ec-3');
-        const supportsDTS = isAudioSupported('dtsc') || isAudioSupported('dtsh');
+          if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+            supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+            supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
+            supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
+            supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
+          }
+        } catch(e) {}
 
         customEvent.sender.send({
           type: 'RESOLUTION_RESPONSE',
