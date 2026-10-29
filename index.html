@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Xtreme IPTV V2</title>
+  <title>Xtreme IPTV Receiver V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
     cast-media-player {
@@ -16,7 +16,7 @@
   <cast-media-player></cast-media-player>
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager(); // ✅ هذا هو التصحيح
+    const playerManager = context.getPlayerManager(); // ✅ التصحيح الجذري هنا
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
@@ -29,15 +29,11 @@
         let supportsEAC3 = false;
         let supportsDTS = false;
 
+        // 🛡️ حماية التلفاز من الانهيار: نستخدم try/catch
         try {
-          let is4K = false;
-          let is1080p = true;
-          
-          if (playerManager && typeof playerManager.canDisplayType === 'function') {
-             is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
-             is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
-          }
-          
+          const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
+          const is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
+
           if (is4K) maxRes = '4K';
           else if (!is1080p) maxRes = '720p';
 
@@ -47,18 +43,23 @@
             supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
             supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
           }
-        } catch(e) {
-           console.log("Error checking capabilities: " + e.message);
+        } catch (e) {
+          console.log("TV does not support capability check, using defaults.");
         }
 
-        customEvent.sender.send({
-          type: 'RESOLUTION_RESPONSE',
-          maxResolution: maxRes,
-          supportsAAC: supportsAAC,
-          supportsAC3: supportsAC3,
-          supportsEAC3: supportsEAC3,
-          supportsDTS: supportsDTS
-        });
+        // 🛡️ حماية التلفاز عند إرسال الرد
+        try {
+          customEvent.sender.send({
+            type: 'RESOLUTION_RESPONSE',
+            maxResolution: maxRes,
+            supportsAAC: supportsAAC,
+            supportsAC3: supportsAC3,
+            supportsEAC3: supportsEAC3,
+            supportsDTS: supportsDTS
+          });
+        } catch (e) {
+          console.log("Failed to send response.");
+        }
       }
     });
 
