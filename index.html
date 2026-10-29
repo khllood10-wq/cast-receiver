@@ -5,103 +5,72 @@
   <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
-    cast-media-player { --splash-image: none; }
+    cast-media-player {
+      --bottom-controls-visibility: hidden !important;
+      --progress-bar-color: transparent !important;
+      --splash-image: none;
+    }
   </style>
 </head>
 <body>
   <cast-media-player></cast-media-player>
   <script>
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const NS = 'urn:x-cast:com.xtreme.iptv.resolution';
-    let lastSenderId = null;
-
-    // إخفاء الشريط بأمان (CSS فقط)
-    function applyHideControls() {
-      if (document.getElementById('_xtreme_hide')) return;
+    (function() {
       try {
-        const s = document.createElement('style');
-        s.id = '_xtreme_hide';
-        s.textContent = `cast-media-player{--bottom-controls-visibility:hidden!important;--progress-bar-color:transparent!important;}`;
-        document.head.appendChild(s);
-      } catch(e) {}
-    }
-    function removeHideControls() {
-      const el = document.getElementById('_xtreme_hide');
-      if (el) el.remove();
-    }
+        var context = cast.framework.CastReceiverContext.getInstance();
+        var NS = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-    // حذف CSS عند تحميل فيديو جديد (يظهر الشريط أثناء التحميل)
-    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_LOAD_START, () => {
-      removeHideControls();
-    });
+        context.addCustomMessageListener(NS, function(event) {
+          try {
+            var msg = event.data;
+            if (typeof msg === 'string') {
+              try { msg = JSON.parse(msg); } catch(e) {}
+            }
+            if (!msg || msg.type !== 'CHECK_RESOLUTION') return;
 
-    // إعادة تطبيق CSS بعد بدء التشغيل الفعلي + 2 ثانية
-    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_STATE_CHANGED, (e) => {
-      if (e.newState === cast.framework.media_player.MediaState.PLAYING) {
-        setTimeout(applyHideControls, 2000);
+            // اكتشاف الدقة
+            var maxRes = '1080p';
+            try {
+              var screenW = 0;
+              try { screenW = window.screen.width || 0; } catch(e) {}
+
+              function canPlay(codec) {
+                try {
+                  return MediaSource && MediaSource.isTypeSupported &&
+                    MediaSource.isTypeSupported('video/mp4; codecs="' + codec + '"');
+                } catch(e) { return false; }
+              }
+
+              var can4K = canPlay('hvc1.1.6.L153.B0') || canPlay('avc1.640028');
+              if (screenW >= 3840 && can4K) {
+                maxRes = '4K';
+              } else if (canPlay('avc1.640028') || canPlay('avc1.4D401F')) {
+                maxRes = '1080p';
+              } else {
+                maxRes = '720p';
+              }
+            } catch(e) {}
+
+            // إرسال الرد
+            try {
+              context.sendCustomMessage(NS, event.senderId, JSON.stringify({
+                type: 'RESOLUTION_RESPONSE',
+                maxResolution: maxRes,
+                supportsAAC: true,
+                supportsAC3: false,
+                supportsEAC3: false,
+                supportsDTS: false
+              }));
+            } catch(e) {}
+          } catch(e) {}
+        });
+
+        // بدء التشغيل (بدون أي خيارات إضافية قد لا تكون مدعومة)
+        context.start();
+      } catch(e) {
+        try { cast.framework.CastReceiverContext.getInstance().start(); } catch(e2) {}
       }
-    });
-
-    // اكتشاف الدقة: شاشة + كوديك
-    function canPlay(codec) {
-      try {
-        return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`);
-      } catch(e) { return false; }
-    }
-
-    function detectResolution() {
-      let w = 0;
-      try { w = window.screen.width || 0; } catch(e) {}
-      const can4K = canPlay('hvc1.1.6.L153.B0') || canPlay('avc1.640028');
-      if (w >= 3840 && can4K) return '4K';
-      if (canPlay('avc1.640028') || canPlay('avc1.4D401F')) return '1080p';
-      return '720p';
-    }
-
-    function sendCaps(senderId) {
-      if (!senderId) return;
-      try {
-        context.sendCustomMessage(NS, senderId, JSON.stringify({
-          type: 'RESOLUTION_RESPONSE',
-          maxResolution: detectResolution(),
-          supportsAAC: true, supportsAC3: false, supportsEAC3: false, supportsDTS: false
-        }));
-      } catch(e) {}
-    }
-
-    // ✅ الطريقة الجديدة: التلفاز يبادرة فور اتصال الهاتف
-    context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED, (e) => {
-      try {
-        lastSenderId = e.senderId;
-        sendCaps(e.senderId);
-      } catch(err) {}
-    });
-
-    // احتياط: استقبال طلب صريح من الهاتف
-    context.addCustomMessageListener(NS, (event) => {
-      try {
-        let msg = event.data;
-        if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch(e) {} }
-        lastSenderId = event.senderId;
-        if (msg && msg.type === 'CHECK_RESOLUTION') sendCaps(event.senderId);
-      } catch(e) {}
-    });
-
-    // ✅ الإبلاغ عن أخطاء التشغيل (للترميز غير المدعوم)
-    playerManager.addEventListener(cast.framework.events.EventType.ERROR, (event) => {
-      if (!lastSenderId) return;
-      let code = 'UNKNOWN';
-      try { if (event.detailedErrorCode) code = String(event.detailedErrorCode); } catch(e) {}
-      try {
-        context.sendCustomMessage(NS, lastSenderId, JSON.stringify({
-          type: 'PLAYBACK_ERROR', errorCode: code
-        }));
-      } catch(e) {}
-    });
-
-    try { context.start({ uiConfig: { touchScreenOptimizedApp: false } }); }
-    catch(e) { context.start(); }
+    })();
   </script>
 </body>
 </html>
