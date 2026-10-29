@@ -5,10 +5,7 @@
   <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
-    /* لا نطبق إخفاء الشريط الآن - سنطبقه ديناميكياً بعد بدء التشغيل */
-    cast-media-player {
-      --splash-image: none;
-    }
+    cast-media-player { --splash-image: none; }
   </style>
 </head>
 <body>
@@ -16,137 +13,95 @@
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
     const playerManager = context.getPlayerManager();
-    const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+    const NS = 'urn:x-cast:com.xtreme.iptv.resolution';
     let lastSenderId = null;
 
-    // ============================================================
-    // 1. إخفاء الشريط السفلي بأمان (بعد PLAYING + 2 ثانية)
-    // ============================================================
+    // إخفاء الشريط بأمان (CSS فقط)
     function applyHideControls() {
-      if (document.getElementById('_xtreme_hide_controls')) return;
+      if (document.getElementById('_xtreme_hide')) return;
       try {
-        const style = document.createElement('style');
-        style.id = '_xtreme_hide_controls';
-        style.textContent = `
-          cast-media-player {
-            --bottom-controls-visibility: hidden !important;
-            --progress-bar-color: transparent !important;
-            --tooltip-background-color: transparent !important;
-          }
-        `;
-        document.head.appendChild(style);
-        console.log("✅ تم إخفاء الشريط السفلي بأمان");
-      } catch(e) { console.log("Failed to hide controls:", e); }
+        const s = document.createElement('style');
+        s.id = '_xtreme_hide';
+        s.textContent = `cast-media-player{--bottom-controls-visibility:hidden!important;--progress-bar-color:transparent!important;}`;
+        document.head.appendChild(s);
+      } catch(e) {}
     }
-
     function removeHideControls() {
-      const el = document.getElementById('_xtreme_hide_controls');
+      const el = document.getElementById('_xtreme_hide');
       if (el) el.remove();
     }
 
-    // حذف CSS عند بدء تحميل فيديو جديد (ليظهر الشريط أثناء التحميل)
+    // حذف CSS عند تحميل فيديو جديد (يظهر الشريط أثناء التحميل)
     playerManager.addEventListener(cast.framework.events.EventType.PLAYER_LOAD_START, () => {
       removeHideControls();
     });
 
-    // تطبيق CSS بعد بدء التشغيل الفعلي + انتظار إضافي 2 ثانية
-    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_STATE_CHANGED, (event) => {
-      if (event.newState === cast.framework.media_player.MediaState.PLAYING) {
+    // إعادة تطبيق CSS بعد بدء التشغيل الفعلي + 2 ثانية
+    playerManager.addEventListener(cast.framework.events.EventType.PLAYER_STATE_CHANGED, (e) => {
+      if (e.newState === cast.framework.media_player.MediaState.PLAYING) {
         setTimeout(applyHideControls, 2000);
       }
     });
 
-    // ============================================================
-    // 2. اكتشاف الدقة (شاشة + كوديك معاً)
-    // ============================================================
-    function canPlayCodec(codec) {
+    // اكتشاف الدقة: شاشة + كوديك
+    function canPlay(codec) {
       try {
-        if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-          return MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`);
-        }
-      } catch(e) {}
-      return false;
+        return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`);
+      } catch(e) { return false; }
     }
 
     function detectResolution() {
-      let screenW = 0;
-      try { screenW = window.screen.width || 0; } catch(e) {}
-      
-      const canDo4K = canPlayCodec('hvc1.1.6.L153.B0') ||
-                      canPlayCodec('hvc1.1.6.L150.B0') ||
-                      canPlayCodec('avc1.640028');
-      
-      // 4K فقط إذا كانت الشاشة 4K والكوديك مدعوم
-      if (screenW >= 3840 && canDo4K) return '4K';
-      
-      const canDo1080p = canPlayCodec('avc1.640028') || canPlayCodec('avc1.4D401F');
-      if (canDo1080p) return '1080p';
-      
+      let w = 0;
+      try { w = window.screen.width || 0; } catch(e) {}
+      const can4K = canPlay('hvc1.1.6.L153.B0') || canPlay('avc1.640028');
+      if (w >= 3840 && can4K) return '4K';
+      if (canPlay('avc1.640028') || canPlay('avc1.4D401F')) return '1080p';
       return '720p';
     }
 
-    // ============================================================
-    // 3. استقبال الرسائل من الهاتف (مع حماية كاملة)
-    // ============================================================
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+    function sendCaps(senderId) {
+      if (!senderId) return;
       try {
-        let message = customEvent.data;
-        if (typeof message === 'string') {
-          try { message = JSON.parse(message); } catch(e) {}
-        }
-        
-        lastSenderId = customEvent.senderId;
-        
-        if (message && message.type === 'CHECK_RESOLUTION') {
-          let maxRes = '1080p';
-          try { maxRes = detectResolution(); } catch(e) {}
-          
-          console.log("📡 Sending resolution:", maxRes);
-          
-          try {
-            context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, JSON.stringify({
-              type: 'RESOLUTION_RESPONSE',
-              maxResolution: maxRes,
-              supportsAAC: true,
-              supportsAC3: false,
-              supportsEAC3: false,
-              supportsDTS: false
-            }));
-          } catch(e) { console.log("Send failed:", e); }
-        }
-      } catch(e) { console.log("Message handler error:", e); }
+        context.sendCustomMessage(NS, senderId, JSON.stringify({
+          type: 'RESOLUTION_RESPONSE',
+          maxResolution: detectResolution(),
+          supportsAAC: true, supportsAC3: false, supportsEAC3: false, supportsDTS: false
+        }));
+      } catch(e) {}
+    }
+
+    // ✅ الطريقة الجديدة: التلفاز يبادرة فور اتصال الهاتف
+    context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED, (e) => {
+      try {
+        lastSenderId = e.senderId;
+        sendCaps(e.senderId);
+      } catch(err) {}
     });
 
-    // ============================================================
-    // 4. الإبلاغ عن أخطاء التشغيل (للترميز غير المعروف)
-    // ============================================================
-    playerManager.addEventListener(cast.framework.events.EventType.ERROR, (event) => {
-      console.log("🎬 Playback error detected:", event);
-      if (!lastSenderId) return;
-      
-      let errorCode = 'UNKNOWN';
+    // احتياط: استقبال طلب صريح من الهاتف
+    context.addCustomMessageListener(NS, (event) => {
       try {
-        if (event.detailedErrorCode) errorCode = String(event.detailedErrorCode);
+        let msg = event.data;
+        if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch(e) {} }
+        lastSenderId = event.senderId;
+        if (msg && msg.type === 'CHECK_RESOLUTION') sendCaps(event.senderId);
       } catch(e) {}
-      
+    });
+
+    // ✅ الإبلاغ عن أخطاء التشغيل (للترميز غير المدعوم)
+    playerManager.addEventListener(cast.framework.events.EventType.ERROR, (event) => {
+      if (!lastSenderId) return;
+      let code = 'UNKNOWN';
+      try { if (event.detailedErrorCode) code = String(event.detailedErrorCode); } catch(e) {}
       try {
-        context.sendCustomMessage(CUSTOM_NAMESPACE, lastSenderId, JSON.stringify({
-          type: 'PLAYBACK_ERROR',
-          errorCode: errorCode
+        context.sendCustomMessage(NS, lastSenderId, JSON.stringify({
+          type: 'PLAYBACK_ERROR', errorCode: code
         }));
       } catch(e) {}
     });
 
-    // ============================================================
-    // 5. بدء التشغيل (مع إعدادات Android TV)
-    // ============================================================
-    try {
-      context.start({
-        uiConfig: { touchScreenOptimizedApp: false }
-      });
-    } catch(e) {
-      context.start();
-    }
+    try { context.start({ uiConfig: { touchScreenOptimizedApp: false } }); }
+    catch(e) { context.start(); }
   </script>
 </body>
 </html>
