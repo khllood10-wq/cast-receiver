@@ -16,20 +16,26 @@
   <cast-media-player></cast-media-player>
   <script>
     const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager(); // ✅ التصحيح الجذري هنا
+    const playerManager = context.getPlayerManager();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      const message = customEvent.data;
+      let message;
+      
+      // ✅ السر هنا: فك تشفير الرسالة القادمة من الهاتف
+      try {
+        message = JSON.parse(customEvent.data);
+      } catch(e) {
+        message = customEvent.data; 
+      }
+
       if (message.type === 'CHECK_RESOLUTION') {
-        
         let maxRes = '1080p';
         let supportsAAC = true;
         let supportsAC3 = false;
         let supportsEAC3 = false;
         let supportsDTS = false;
 
-        // 🛡️ حماية التلفاز من الانهيار: نستخدم try/catch
         try {
           const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
           const is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
@@ -43,23 +49,21 @@
             supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
             supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
           }
-        } catch (e) {
-          console.log("TV does not support capability check, using defaults.");
-        }
+        } catch (e) {}
 
-        // 🛡️ حماية التلفاز عند إرسال الرد
+        // إرسال الرد كـ JSON String لكي يفهمه التطبيق
+        const response = JSON.stringify({
+          type: 'RESOLUTION_RESPONSE',
+          maxResolution: maxRes,
+          supportsAAC: supportsAAC,
+          supportsAC3: supportsAC3,
+          supportsEAC3: supportsEAC3,
+          supportsDTS: supportsDTS
+        });
+
         try {
-          customEvent.sender.send({
-            type: 'RESOLUTION_RESPONSE',
-            maxResolution: maxRes,
-            supportsAAC: supportsAAC,
-            supportsAC3: supportsAC3,
-            supportsEAC3: supportsEAC3,
-            supportsDTS: supportsDTS
-          });
-        } catch (e) {
-          console.log("Failed to send response.");
-        }
+          customEvent.sender.send(response);
+        } catch (e) {}
       }
     });
 
