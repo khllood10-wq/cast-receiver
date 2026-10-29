@@ -5,14 +5,11 @@
   <title>Xtreme IPTV V2</title>
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
-    /* 🛑 المحاولة 1: أوامر CSS لإخفاء الشريط */
+    /* إخفاء الشريط السفلي عبر CSS (آمن جداً) */
     cast-media-player {
       --bottom-controls-visibility: hidden;
       --progress-bar-color: transparent;
       --splash-image: none;
-      --tooltip-background-color: transparent;
-      --track-color: transparent;
-      --thumb-color: transparent;
     }
   </style>
 </head>
@@ -23,42 +20,6 @@
     const playerManager = context.getPlayerManager();
     const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-    // 🛑 المحاولة 2: إزالة أوامر التحكم (قد يجعل الشريط يختفي في بعض التلفزيونات)
-    try {
-      if (playerManager && typeof playerManager.removeSupportedMediaCommands === 'function') {
-        playerManager.removeSupportedMediaCommands(
-          cast.framework.messages.Command.SEEK |
-          cast.framework.messages.Command.SKIP_FORWARD |
-          cast.framework.messages.Command.SKIP_BACKWARD |
-          cast.framework.messages.Command.PAUSE |
-          cast.framework.messages.Command.PLAY |
-          cast.framework.messages.Command.STREAM_VOLUME |
-          cast.framework.messages.Command.STREAM_MUTE
-        );
-      }
-    } catch (e) { console.log("Command removal failed:", e); }
-
-    // 🛑 المحاولة 3: مسح أزرار التحكم الافتراضية
-    try {
-      if (typeof cast.framework.ui !== 'undefined' && cast.framework.ui.Controls) {
-        const touchControls = cast.framework.ui.Controls.getInstance();
-        if (touchControls && typeof touchControls.clearDefaultSlotAssignments === 'function') {
-          touchControls.clearDefaultSlotAssignments();
-        }
-      }
-    } catch (e) { console.log("Controls clearing failed:", e); }
-
-    // 🛑 المحاولة 4: تعطيل واجهة اللمس (لمنع ظهور الشريط عند اللمس)
-    try {
-      if (typeof cast.framework.ui !== 'undefined' && cast.framework.ui.UiConfig) {
-        const uiConfig = new cast.framework.ui.UiConfig();
-        if (uiConfig) {
-          uiConfig.touchScreenOptimizedApp = false;
-        }
-      }
-    } catch (e) { console.log("UiConfig failed:", e); }
-
-    // الاستماع للرسائل من الهاتف (الدقة والترميز)
     context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
       let message;
       try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
@@ -86,14 +47,13 @@
         }, 2000);
 
         try {
-          const maxRes = detectMaxResolution();
-          const hasAAC = true;
-          const hasAC3 = canPlayAudio('ac-3');
-          const hasEAC3 = canPlayAudio('ec-3');
-          const hasDTS = canPlayAudio('dtsc') || canPlayAudio('dtsh') || canPlayAudio('dtse');
+          let maxRes = '1080p';
+          try {
+            if (playerManager.canDisplayType('video/mp4', 3840, 2160, 60)) maxRes = '4K';
+          } catch(e) {}
           
           clearTimeout(safetyTimeout);
-          sendResponse(maxRes, hasAAC, hasAC3, hasEAC3, hasDTS);
+          sendResponse(maxRes, true, false, false, false);
         } catch (e) {
           clearTimeout(safetyTimeout);
           sendResponse('1080p', true, false, false, false);
@@ -101,55 +61,7 @@
       }
     });
 
-    // دوال الفحص (كما هي من الرد السابق)
-    function canPlayVideo(codecString, width, height, framerate) {
-      let isSupported = false;
-      try {
-        if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-          isSupported = MediaSource.isTypeSupported(`video/mp4; codecs="${codecString}"`) ||
-                        MediaSource.isTypeSupported(`video/webm; codecs="${codecString}"`);
-        }
-      } catch(e) {}
-      if (!isSupported) {
-        try { isSupported = playerManager.canDisplayType('video/mp4', width, height, framerate); } catch(e) {}
-      }
-      return isSupported;
-    }
-
-    function canPlayAudio(codecString) {
-      try {
-        if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-          return MediaSource.isTypeSupported(`audio/mp4; codecs="${codecString}"`) ||
-                 MediaSource.isTypeSupported(`audio/webm; codecs="${codecString}"`) ||
-                 MediaSource.isTypeSupported(`audio/mp2t; codecs="${codecString}"`);
-        }
-      } catch(e) {}
-      return false;
-    }
-
-    function detectMaxResolution() {
-      if (canPlayVideo('hvc1.1.6.L153.B0', 3840, 2160, 60) ||
-          canPlayVideo('hvc1.1.6.L150.B0', 3840, 2160, 30) ||
-          canPlayVideo('hev1.1.6.L153.B0', 3840, 2160, 60)) return '4K';
-      if (canPlayVideo('avc1.640028', 3840, 2160, 30) ||
-          canPlayVideo('avc1.64002A', 3840, 2160, 60) ||
-          canPlayVideo('avc1.640033', 3840, 2160, 24)) return '4K';
-      if (canPlayVideo('avc1.640028', 1920, 1080, 60) ||
-          canPlayVideo('avc1.4D401F', 1920, 1080, 30) ||
-          canPlayVideo('avc1.42E01E', 1920, 1080, 30)) return '1080p';
-      return '720p';
-    }
-
-    // 🛑 المحاولة 5: بدء التشغيل مع تعطيل واجهة اللمس (إذا كان مدعوماً)
-    try {
-      context.start({
-        uiConfig: {
-          touchScreenOptimizedApp: false
-        }
-      });
-    } catch (e) {
-      context.start();
-    }
+    context.start();
   </script>
 </body>
 </html>
