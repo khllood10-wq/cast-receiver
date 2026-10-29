@@ -1,73 +1,29 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Xtreme IPTV Receiver V2</title>
-  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-  <style>
-    cast-media-player {
-      --bottom-controls-visibility: hidden;
-      --progress-bar-color: transparent;
-      --splash-image: "";
-    }
-  </style>
-</head>
-<body>
-  <cast-media-player></cast-media-player>
-  <script>
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+<script>
+  const context = cast.framework.CastReceiverContext.getInstance();
+  const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      let message;
-      
-      // ✅ السر هنا: فك تشفير الرسالة القادمة من الهاتف
-      try {
-        message = JSON.parse(customEvent.data);
-      } catch(e) {
-        message = customEvent.data; 
-      }
+  context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
+    // 🛑 اختبار: تحويل الشاشة للأحمر عند استلام أي رسالة
+    document.body.style.backgroundColor = "red";
+    console.log("🎉 التلفاز استلم الرسالة من الهاتف!");
 
-      if (message.type === 'CHECK_RESOLUTION') {
-        let maxRes = '1080p';
-        let supportsAAC = true;
-        let supportsAC3 = false;
-        let supportsEAC3 = false;
-        let supportsDTS = false;
-
-        try {
-          const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
-          const is1080p = playerManager.canDisplayType('video/mp4', 1920, 1080, 60);
-
-          if (is4K) maxRes = '4K';
-          else if (!is1080p) maxRes = '720p';
-
-          if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-            supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
-            supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
-            supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
-            supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
-          }
-        } catch (e) {}
-
-        // إرسال الرد كـ JSON String لكي يفهمه التطبيق
-        const response = JSON.stringify({
-          type: 'RESOLUTION_RESPONSE',
-          maxResolution: maxRes,
-          supportsAAC: supportsAAC,
-          supportsAC3: supportsAC3,
-          supportsEAC3: supportsEAC3,
-          supportsDTS: supportsDTS
-        });
-
-        try {
-          customEvent.sender.send(response);
-        } catch (e) {}
-      }
+    // 🛑 اختبار: إرسال رد وهمي بقيمة "TEST_4K"
+    const mockResponse = JSON.stringify({
+      type: 'RESOLUTION_RESPONSE',
+      maxResolution: 'TEST_4K',
+      supportsAAC: true,
+      supportsAC3: true,
+      supportsEAC3: true,
+      supportsDTS: true
     });
 
-    context.start();
-  </script>
-</body>
-</html>
+    try {
+      customEvent.sender.send(mockResponse);
+      console.log("🎉 التلفاز أرسل الرد الوهمي!");
+    } catch (e) {
+      console.log("❌ فشل إرسال الرد: " + e.message);
+    }
+  });
+
+  context.start();
+</script>
