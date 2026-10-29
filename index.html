@@ -13,48 +13,65 @@
 <body>
   <cast-media-player></cast-media-player>
   <script>
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const playerManager = context.getPlayerManager();
-    const CUSTOM_NAMESPACE = 'urn:x-cast:com.xtreme.iptv.resolution';
+    (function () {
+      try {
+        var context = cast.framework.CastReceiverContext.getInstance();
+        var NS = 'urn:x-cast:com.xtreme.iptv.resolution';
 
-    context.addCustomMessageListener(CUSTOM_NAMESPACE, function(customEvent) {
-      let message;
-      try { message = JSON.parse(customEvent.data); } catch(e) { message = customEvent.data; }
+        context.addCustomMessageListener(NS, function (event) {
+          try {
+            var data = event.data;
+            if (typeof data === 'string') { try { data = JSON.parse(data); } catch(e) {} }
+            if (!data || data.type !== 'CHECK_RESOLUTION') return;
 
-      if (message.type === 'CHECK_RESOLUTION') {
-        let maxRes = '1080p';
-        let supportsAAC = true;
-        let supportsAC3 = false;
-        let supportsEAC3 = false;
-        let supportsDTS = false;
+            // ✅ قراءة دقة الشاشة الحقيقية (بدلاً من قدرات المعالج)
+            var screenW = 0;
+            var screenH = 0;
+            try { 
+              screenW = window.screen.width || 0; 
+              screenH = window.screen.height || 0; 
+            } catch(e) {}
 
-        try {
-          const is4K = playerManager.canDisplayType('video/mp4', 3840, 2160, 60);
-          if (is4K) maxRes = '4K';
-          
-          if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
-            supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
-            supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
-            supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
-            supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
-          }
-        } catch (e) {}
+            var maxRes = '720p'; // افتراضي آمن
+            if (screenW >= 3840 || screenH >= 2160) {
+              maxRes = '4K';
+            } else if (screenW >= 1920 || screenH >= 1080) {
+              maxRes = '1080p';
+            } else if (screenW >= 1280 || screenH >= 720) {
+              maxRes = '720p';
+            } else {
+              maxRes = 'SD';
+            }
 
-        try {
-          const response = JSON.stringify({
-            type: 'RESOLUTION_RESPONSE',
-            maxResolution: maxRes,
-            supportsAAC: supportsAAC,
-            supportsAC3: supportsAC3,
-            supportsEAC3: supportsEAC3,
-            supportsDTS: supportsDTS
-          });
-          context.sendCustomMessage(CUSTOM_NAMESPACE, customEvent.senderId, response);
-        } catch (e) {}
+            // فحص ترميزات الصوت
+            var supportsAAC = true, supportsAC3 = false, supportsEAC3 = false, supportsDTS = false;
+            try {
+              if (typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported) {
+                supportsAAC = MediaSource.isTypeSupported('audio/mp4; codecs="mp4a.40.2"');
+                supportsAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"');
+                supportsEAC3 = MediaSource.isTypeSupported('audio/mp4; codecs="ec-3"');
+                supportsDTS = MediaSource.isTypeSupported('audio/mp4; codecs="dtsc"');
+              }
+            } catch (e) {}
+
+            var response = JSON.stringify({
+              type: 'RESOLUTION_RESPONSE',
+              maxResolution: maxRes,
+              supportsAAC: supportsAAC,
+              supportsAC3: supportsAC3,
+              supportsEAC3: supportsEAC3,
+              supportsDTS: supportsDTS
+            });
+            
+            context.sendCustomMessage(NS, event.senderId, response);
+          } catch(e) {}
+        });
+
+        context.start();
+      } catch(e) {
+        try { cast.framework.CastReceiverContext.getInstance().start(); } catch(e2) {}
       }
-    });
-
-    context.start();
+    })();
   </script>
 </body>
 </html>
